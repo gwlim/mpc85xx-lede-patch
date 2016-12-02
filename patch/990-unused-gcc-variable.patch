@@ -2,7 +2,7 @@ diff --git a/./toolchain/gcc/patches/5.3.0/990-unused-gcc-variable.patch b/./too
 new file mode 100644
 index 0000000..c6210cd
 --- /dev/null
-+++ b/./toolchain/gcc/patches/5.3.0/990-unused-gcc-variable.patch
++++ b/./toolchain/gcc/patches/5.4.0/990-unused-gcc-variable.patch
 @@ -0,0 +1,16 @@
 +--- a/libitm/method-serial.cc
 ++++ b/libitm/method-serial.cc
