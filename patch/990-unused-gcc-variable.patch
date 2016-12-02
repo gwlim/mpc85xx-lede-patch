@@ -1,0 +1,22 @@
+diff --git a/./toolchain/gcc/patches/5.3.0/990-unused-gcc-variable.patch b/./toolchain/gcc/patches/5.3.0/990-unused-gcc-variable.patch
+new file mode 100644
+index 0000000..c6210cd
+--- /dev/null
++++ b/./toolchain/gcc/patches/5.3.0/990-unused-gcc-variable.patch
+@@ -0,0 +1,16 @@
++--- a/libitm/method-serial.cc
+++++ b/libitm/method-serial.cc
++@@ -301,10 +301,10 @@ GTM::gtm_thread::serialirr_mode ()
++       // would do for an outermost commit.
++       // We're already serial, so we don't need to ensure privatization safety
++       // for other transactions here.
++-      gtm_word priv_time = 0;
++-      bool ok = disp->trycommit (priv_time);
+++      //gtm_word priv_time = 0;
+++      //bool ok = disp->trycommit (priv_time);
++       // Given that we're already serial, the trycommit better work.
++-      assert (ok);
+++      //assert (ok);
++     }
++   else if (serial_lock.write_upgrade (this))
++     {

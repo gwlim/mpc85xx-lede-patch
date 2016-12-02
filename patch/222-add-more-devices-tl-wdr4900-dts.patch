@@ -1,0 +1,227 @@
+diff --git a/./target/linux/mpc85xx/patches-4.4/222-add-devices-tl-wdr4900-dts.patch b/./target/linux/mpc85xx/patches-4.4/222-add-devices-tl-wdr4900-dts.patch
+new file mode 100644
+index 0000000..1b6e329
+--- /dev/null
++++ b/./target/linux/mpc85xx/patches-4.4/222-add-devices-tl-wdr4900-dts.patch
+@@ -0,0 +1,221 @@
++--- a/arch/powerpc/boot/dts/tl-wdr4900-v1.dts
+++++ b/arch/powerpc/boot/dts/tl-wdr4900-v1.dts
++@@ -26,13 +26,95 @@
++ 		spi0 = &spi0;
++ 	};
++ 
+++	cpus {
+++		#address-cells = <1>;
+++		#size-cells = <0>;
+++
+++		PowerPC,P1014@0 {
+++			device_type = "cpu";
+++			reg = <0x0>;
+++			next-level-cache = <&L2>;
+++		};
+++	};
+++
++ 	memory {
++ 		device_type = "memory";
++ 	};
++ 
++ 	soc: soc@ffe00000 {
+++		#address-cells = <1>;
+++		#size-cells = <1>;
+++		device_type = "soc";
+++		compatible = "fsl,p1020-immr", "simple-bus";
+++
++ 		ranges = <0x0 0x0 0xffe00000 0x100000>;
++ 
+++		ecm-law@0 {
+++			compatible = "fsl,ecm-law";
+++			reg = <0x0 0x1000>;
+++			fsl,num-laws = <12>;
+++		};
+++
+++		ecm@1000 {
+++			compatible = "fsl,p1020-ecm", "fsl,ecm";
+++			reg = <0x1000 0x1000>;
+++			interrupts = <16 2>;
+++			interrupt-parent = <&mpic>;
+++		};
+++
+++		memory-controller@2000 {
+++			compatible = "fsl,p1020-memory-controller";
+++			reg = <0x2000 0x1000>;
+++			interrupt-parent = <&mpic>;
+++			interrupts = <16 2>;
+++		};
+++
+++		i2c@3000 {
+++			#address-cells = <1>;
+++			#size-cells = <0>;
+++			cell-index = <0>;
+++			compatible = "fsl-i2c";
+++			reg = <0x3000 0x100>;
+++			interrupts = <43 2>;
+++			interrupt-parent = <&mpic>;
+++			dfsrr;
+++			rtc@68 {
+++				compatible = "pericom,pt7c4338";
+++				reg = <0x68>;
+++			};
+++		};
+++
+++		i2c@3100 {
+++			#address-cells = <1>;
+++			#size-cells = <0>;
+++			cell-index = <1>;
+++			compatible = "fsl-i2c";
+++			reg = <0x3100 0x100>;
+++			interrupts = <43 2>;
+++			interrupt-parent = <&mpic>;
+++			dfsrr;
+++		};
+++
+++		serial0: serial@4500 {
+++			cell-index = <0>;
+++			device_type = "serial";
+++			compatible = "ns16550";
+++			reg = <0x4500 0x100>;
+++			clock-frequency = <0>;
+++			interrupts = <42 2>;
+++			interrupt-parent = <&mpic>;
+++		};
+++
+++		cache-sram@fff00000 {
+++			fsl,cache-sram-ctlr-handle = <&L2>;
+++			reg = <0 0xfff00000 0 0x10000>;
+++			compatible = "fsl,p1014-cache-sram";
+++		};
+++	
+++	
+++	
+++	
+++
++ 		spi0: spi@7000 {
++ 			flash@0 {
++ 				#address-cells = <1>;
++@@ -83,14 +165,31 @@
++ 		};
++ 
++ 		gpio0: gpio-controller@fc00 {
+++			#gpio-cells = <2>;
+++			compatible = "fsl,mpc8548-gpio";
+++			reg = <0xf000 0x100>;
+++			interrupts = <47 0x2>;
+++			interrupt-parent = <&mpic>;
+++			gpio-controller;
++ 		};
++ 
++ 		usb@22000 {
++-			phy_type = "utmi";
+++			#address-cells = <1>;
+++			#size-cells = <0>;
+++			compatible = "fsl-usb2-dr";
+++			reg = <0x22000 0x1000>;
+++			interrupt-parent = <&mpic>;
+++			interrupts = <28 0x2>;
++ 			dr_mode = "host";
+++			phy_type = "utmi";
++ 		};
++ 
++ 		mdio@24000 {
+++			#address-cells = <1>;
+++			#size-cells = <0>;
+++			compatible = "fsl,etsec2-mdio";
+++			reg = <0x24000 0x1000 0xb0030 0x4>;
+++
++ 			phy0: ethernet-phy@0 {
++ 				reg = <0x0>;
++ 				qca,ar8327-initvals = <
++@@ -117,6 +216,14 @@
++ 		};
++ 
++ 		enet0: ethernet@b0000 {
+++			#address-cells = <1>;
+++			#size-cells = <1>;
+++			device_type = "network";
+++			model = "eTSEC";
+++			compatible = "gianfar";
+++			fsl,num_rx_queues = <0x8>;
+++			fsl,num_tx_queues = <0x8>;
+++			interrupt-parent = <&mpic>;
++ 			phy-handle = <&phy0>;
++ 			phy-connection-type = "rgmii-id";
++ 			mtd-mac-address = <&config 0x144>;
++@@ -134,10 +241,65 @@
++ 			status = "disabled";
++ 		};
++ 
+++		mpic: pic@40000 {
+++			interrupt-controller;
+++			#address-cells = <0>;
+++			#interrupt-cells = <2>;
+++			reg = <0x40000 0x40000>;
+++			compatible = "chrp,open-pic";
+++			device_type = "open-pic";
+++		};
+++
++ 		serial1: serial@4600 {
++ 			status = "disabled";
++ 		};
++ 
+++		L2: l2-cache-controller@20000 {
+++			compatible = "fsl,p1014-l2-cache-controller";
+++			reg = <0x20000 0x1000>;
+++			cache-line-size = <32>;	// 32 bytes
+++			cache-size = <0x40000>; // L2,256K
+++			interrupt-parent = <&mpic>;
+++			interrupts = <16 2>;
+++		};
+++
+++		dma@21300 {
+++			#address-cells = <1>;
+++			#size-cells = <1>;
+++			compatible = "fsl,eloplus-dma";
+++			reg = <0x21300 0x4>;
+++			ranges = <0x0 0x21100 0x200>;
+++			cell-index = <0>;
+++			dma-channel@0 {
+++				compatible = "fsl,eloplus-dma-channel";
+++				reg = <0x0 0x80>;
+++				cell-index = <0>;
+++				interrupt-parent = <&mpic>;
+++				interrupts = <20 2>;
+++			};
+++			dma-channel@80 {
+++				compatible = "fsl,eloplus-dma-channel";
+++				reg = <0x80 0x80>;
+++				cell-index = <1>;
+++				interrupt-parent = <&mpic>;
+++				interrupts = <21 2>;
+++			};
+++			dma-channel@100 {
+++				compatible = "fsl,eloplus-dma-channel";
+++				reg = <0x100 0x80>;
+++				cell-index = <2>;
+++				interrupt-parent = <&mpic>;
+++				interrupts = <22 2>;
+++			};
+++			dma-channel@180 {
+++				compatible = "fsl,eloplus-dma-channel";
+++				reg = <0x180 0x80>;
+++				cell-index = <3>;
+++				interrupt-parent = <&mpic>;
+++				interrupts = <23 2>;
+++			};
+++		};
+++
++ 		can0: can@1c000 {
++ 			status = "disabled";
++ 		};
++@@ -147,7 +309,7 @@
++ 		};
++ 
++ 		ptp_clock@b0e00 {
++-			compatible = "fsl,etsec-ptp";
+++			compatible = "fsl,gianfar-ptp-timer";
++ 			reg = <0xb0e00 0xb0>;
++ 			interrupts = <68 2 0 0 69 2 0 0 70 2 0 0>;
++ 			fsl,cksel       = <1>;

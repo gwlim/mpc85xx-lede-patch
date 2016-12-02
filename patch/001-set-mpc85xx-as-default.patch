@@ -1,0 +1,13 @@
+diff --git a/scripts/metadata.pl b/scripts/metadata.pl
+index 99fdba1..3dd2a76 100755
+--- a/scripts/metadata.pl
++++ b/scripts/metadata.pl
+@@ -242,7 +242,7 @@ sub gen_target_config() {
+ 	print <<EOF;
+ choice
+ 	prompt "Target System"
+-	default TARGET_ar71xx
++	default TARGET_mpc85xx
+ 	reset if !DEVEL
+ 	
+ EOF

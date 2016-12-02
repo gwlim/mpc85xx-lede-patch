@@ -1,0 +1,18 @@
+diff --git a/./target/linux/mpc85xx/patches-4.4/221-PPC-makefile-optimize.patch b/./target/linux/mpc85xx/patches-4.4/221-PPC-makefile-optimize.patch
+new file mode 100644
+index 0000000..5ba927e
+--- /dev/null
++++ b/./target/linux/mpc85xx/patches-4.4/221-PPC-makefile-optimize.patch
+@@ -0,0 +1,12 @@
++--- a/arch/powerpc/Makefile	2015-02-25 22:24:52.537786244 +0800
+++++ b/arch/powerpc/Makefile	2015-02-25 22:26:45.983962672 +0800
++@@ -153,7 +153,7 @@ ifeq ($(CONFIG_PPC32),y)
++ ifeq ($(CONFIG_PPC_E500MC),y)
++ CFLAGS-y += $(call cc-option,-mcpu=e500mc,-mcpu=powerpc)
++ else
++-CFLAGS-$(CONFIG_E500) += $(call cc-option,-mcpu=8540 -msoft-float,-mcpu=powerpc)
+++CFLAGS-$(CONFIG_E500) += $(call cc-option,-mcpu=8548 -misel -fomit-frame-pointer -fno-caller-saves -mfloat-gprs=double -mno-longcall -pthread -mtls-markers)
++ endif
++ endif
++ 
++
