@@ -1,8 +1,8 @@
 diff --git a/scripts/target-metadata.pl b/scripts/target-metadata.pl
-index 99fdba1..3dd2a76 100755
---- a/scripts/metadata.pl
-+++ b/scripts/metadata.pl
-@@ -242,7 +242,7 @@ sub gen_target_config() {
+index 7f7dc6d..4fdaacf 100755
+--- a/scripts/target-metadata.pl
++++ b/scripts/target-metadata.pl
+@@ -168,7 +168,7 @@ EOF
  	print <<EOF;
  choice
  	prompt "Target System"
