@@ -1,5 +1,5 @@
 diff --git a/target/linux/mpc85xx/Makefile b/target/linux/mpc85xx/Makefile
-index a32be90..81c7afd 100644
+index 161c8cb..94db5e3 100644
 --- a/target/linux/mpc85xx/Makefile
 +++ b/target/linux/mpc85xx/Makefile
 @@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
@@ -10,13 +10,12 @@ index a32be90..81c7afd 100644
 +CPU_TYPE:=8548
  FEATURES:=squashfs
  MAINTAINER:=Imre Kaloz <kaloz@openwrt.org>
- SUBTARGETS=generic p1020
-@@ -26,7 +26,7 @@ endif
+ SUBTARGETS:=generic p1020
+@@ -29,6 +29,6 @@ endif
+ 
  DEFAULT_PACKAGES += \
  	kmod-input-core kmod-input-gpio-keys kmod-button-hotplug \
- 	kmod-leds-gpio kmod-booke-wdt \
--	swconfig kmod-ath9k wpad-mini
-+	swconfig kmod-ath9k wpad
+-	kmod-leds-gpio swconfig kmod-ath9k wpad-mini
++	kmod-leds-gpio swconfig kmod-ath9k wpad
  
- define Target/Description
- 	Build images for the Freescale MPC85xx based boards.
+ $(eval $(call BuildTarget))
