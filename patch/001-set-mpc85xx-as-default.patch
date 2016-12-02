@@ -1,4 +1,4 @@
-diff --git a/scripts/metadata.pl b/scripts/metadata.pl
+diff --git a/scripts/target-metadata.pl b/scripts/target-metadata.pl
 index 99fdba1..3dd2a76 100755
 --- a/scripts/metadata.pl
 +++ b/scripts/metadata.pl
