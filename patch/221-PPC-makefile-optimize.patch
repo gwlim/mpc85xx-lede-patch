@@ -11,7 +11,7 @@ index 0000000..5ba927e
 + CFLAGS-y += $(call cc-option,-mcpu=e500mc,-mcpu=powerpc)
 + else
 +-CFLAGS-$(CONFIG_E500) += $(call cc-option,-mcpu=8540 -msoft-float,-mcpu=powerpc)
-++CFLAGS-$(CONFIG_E500) += $(call cc-option,-mcpu=8548 -misel -fomit-frame-pointer -fno-caller-saves -mfloat-gprs=double -mno-longcall -pthread -mtls-markers)
+++CFLAGS-$(CONFIG_E500) += $(call cc-option,-mcpu=8548 -misel -fomit-frame-pointer -fno-caller-saves -mfloat-gprs=double -mno-longcall -pthread -mtls-markers,-mcpu=powerpc)
 + endif
 + endif
 + 
