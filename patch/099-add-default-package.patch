@@ -1,6 +1,8 @@
+diff --git a/include/target.mk b/include/target.mk
+index 3099448..d80d844 100644
 --- a/include/target.mk
 +++ b/include/target.mk
-@@ -12,7 +12,14 @@ __target_inc=1
+@@ -13,7 +13,14 @@ __target_inc=1
  DEVICE_TYPE?=router
  
  # Default packages - the really basic set
@@ -16,3 +18,12 @@
  # For nas targets
  DEFAULT_PACKAGES.nas:=block-mount fdisk lsblk mdadm
  # For router targets
+@@ -55,7 +62,7 @@ endif
+ DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.$(DEVICE_TYPE))
+ 
+ filter_packages = $(filter-out -% $(patsubst -%,%,$(filter -%,$(1))),$(1))
+-extra_packages = $(if $(filter wpad-mini wpad nas,$(1)),iwinfo)
++extra_packages = $(if $(filter wpad nas,$(1)),iwinfo)
+ 
+ define ProfileDefault
+   NAME:=
