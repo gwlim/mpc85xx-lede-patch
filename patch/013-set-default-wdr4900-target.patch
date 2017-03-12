@@ -1,0 +1,13 @@
+diff --git a/scripts/target-metadata.pl b/scripts/target-metadata.pl
+index 31de3c7..f7c82c5 100755
+--- a/scripts/target-metadata.pl
++++ b/scripts/target-metadata.pl
+@@ -203,7 +203,7 @@ endchoice
+ 
+ choice
+ 	prompt "Target Profile"
+-	default TARGET_MULTI_PROFILE if BUILDBOT
++	default TARGET_mpc85xx_generic_TLWDR4900
+ 
+ EOF
+ 	foreach my $target (@target) {
