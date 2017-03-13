@@ -19,3 +19,16 @@ index 161c8cb..94db5e3 100644
 +	kmod-leds-gpio swconfig kmod-ath9k wpad
  
  $(eval $(call BuildTarget))
+diff --git a/target/linux/mpc85xx/profiles/tp-link.mk b/target/linux/mpc85xx/profiles/tp-link.mk
+index 18a7cdd..3f8fbb8 100644
+--- a/target/linux/mpc85xx/profiles/tp-link.mk
++++ b/target/linux/mpc85xx/profiles/tp-link.mk
+@@ -7,7 +7,7 @@
+ 
+ define Profile/TLWDR4900
+ 	NAME:=TP-Link TL-WDR4900
+-	PACKAGES:=kmod-ath9k wpad-mini
++	PACKAGES:=kmod-ath9k wpad
+ endef
+ 
+ define Profile/TLWDR4900/Description

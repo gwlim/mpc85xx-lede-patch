@@ -18,12 +18,3 @@ index 3099448..d80d844 100644
  # For nas targets
  DEFAULT_PACKAGES.nas:=block-mount fdisk lsblk mdadm
  # For router targets
-@@ -55,7 +62,7 @@ endif
- DEFAULT_PACKAGES += $(DEFAULT_PACKAGES.$(DEVICE_TYPE))
- 
- filter_packages = $(filter-out -% $(patsubst -%,%,$(filter -%,$(1))),$(1))
--extra_packages = $(if $(filter wpad-mini wpad nas,$(1)),iwinfo)
-+extra_packages = $(if $(filter wpad nas,$(1)),iwinfo)
- 
- define ProfileDefault
-   NAME:=
