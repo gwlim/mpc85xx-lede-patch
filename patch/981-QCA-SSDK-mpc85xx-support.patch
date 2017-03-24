@@ -9,8 +9,8 @@
      QCASSDK_CONFIG_OPTS+= RFS_FEATURE=enable
  endif
  endif
---- ./src/make/config.mk	2017-03-23 23:32:15.000000000 +0800
-+++ ./src/make/config.mk	2017-03-24 13:21:08.603904543 +0800
+--- a/package/ssdk/qca-ssdk/src/make/config.mk	2017-03-23 23:32:15.000000000 +0800
++++ b/package/ssdk/qca-ssdk/src/make/config.mk	2017-03-24 13:21:08.603904543 +0800
 @@ -11,7 +11,7 @@ endif
  
  #define cpu type such as PPC MIPS ARM X86
