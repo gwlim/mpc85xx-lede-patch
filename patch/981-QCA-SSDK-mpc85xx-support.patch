@@ -63,7 +63,7 @@
              ifndef CPU_CFLAG
 -            CPU_CFLAG    = -Wstrict-prototypes -fomit-frame-pointer -G 0 -mno-abicalls -fno-strict-aliasing \
 -			-O2 -fno-pic -pipe -mabi=32 -march=mips32r2 -DMODULE -mlong-calls -DEXPORT_SYMTAB
-+            CPU_CFLAG    = -Wstrict-prototypes -fomit-frame-pointer -G 0 -fno-strict-aliasing \
++            CPU_CFLAG    = -Wstrict-prototypes -fomit-frame-pointer -G 0 -fno-strict-aliasing -fno-common \
 +			-O2 -fno-pic -pipe -mcpu=8548 -DMODULE -mlongcall -DEXPORT_SYMTAB
              endif
              endif
