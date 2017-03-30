@@ -1,12 +1,12 @@
 diff --git a/package/libs/openssl/patches/110-optimize-for-size.patch b/package/libs/openssl/patches/110-optimize-for-size.patch
-index 0f174a3..50cdb1f 100644
+index 0f174a3..0f63d06 100644
 --- a/package/libs/openssl/patches/110-optimize-for-size.patch
 +++ b/package/libs/openssl/patches/110-optimize-for-size.patch
 @@ -1,6 +1,6 @@
  --- a/Configure
  +++ b/Configure
 -@@ -470,6 +470,12 @@ my %table=(
-+@@ -470,7 +470,13 @@ my %table=(
++@@ -470,6 +470,13 @@ my %table=(
   "linux-alpha-ccc","ccc:-fast -readonly_strings -DL_ENDIAN::-D_REENTRANT:::SIXTY_FOUR_BIT_LONG RC4_CHUNK DES_INT DES_PTR DES_RISC1 DES_UNROLL:${alpha_asm}",
   "linux-alpha+bwx-ccc","ccc:-fast -readonly_strings -DL_ENDIAN::-D_REENTRANT:::SIXTY_FOUR_BIT_LONG RC4_CHAR RC4_CHUNK DES_INT DES_PTR DES_RISC1 DES_UNROLL:${alpha_asm}",
   
@@ -18,14 +18,3 @@ index 0f174a3..50cdb1f 100644
  +"linux-generic-openwrt","gcc:-DTERMIOS \$(OPENWRT_OPTIMIZATION_FLAGS) -fomit-frame-pointer -Wall::-D_REENTRANT::-ldl:BN_LLONG RC4_CHAR RC4_CHUNK DES_INT DES_UNROLL BF_PTR:${no_asm}:dlfcn:linux-shared:-fPIC::.so.\$(SHLIB_MAJOR).\$(SHLIB_MINOR)",
  +
   # Android: linux-* but without pointers to headers and libs.
---- a/package/libs/openssl/Makefile
-+++ b/package/libs/openssl/Makefile
-@@ -169,6 +169,8 @@ else
-     OPENSSL_TARGET:=linux-mips-openwrt
-   else ifeq ($(CONFIG_arm)$(CONFIG_armeb),y)
-     OPENSSL_TARGET:=linux-armv4-openwrt
-+  else ifeq ($(CONFIG_powerpc),y)
-+    OPENSSL_TARGET:=linux-ppc-openwrt
-   else
-     OPENSSL_TARGET:=linux-generic-openwrt
-     OPENSSL_OPTIONS+=no-perlasm
