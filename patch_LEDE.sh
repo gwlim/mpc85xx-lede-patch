@@ -17,7 +17,7 @@ mv ./feeds/shortcutfe/* ./package/qca
 sed -i '$d' feeds.conf.default
 #mkdir -p ./package/nsshost/qca-rfs/
 #mv ./feeds/nsshost/qca-rfs/ ./package/nsshost
-sed -i 's|+kmod-ipt-extra +kmod-ipt-filter +kmod-ipv6 |+kmod-ipt-extra +kmod-ipt-filter |g' ./package/ssdk/qca-ssdk/Makefile
+sed -i 's|+kmod-ipt-extra +kmod-ipt-filter +kmod-ipv6 |+kmod-ipt-extra +kmod-ipt-filter |g' ./package/qca/qca-ssdk/Makefile
 ./scripts/feeds install -a
 echo Remove Support for PPPOA
 rm ./feeds/luci/protocols/luci-proto-ppp/luasrc/model/cbi/admin_network/proto_pppoa.lua
