@@ -1,5 +1,5 @@
---- a/package/ssdk/qca-ssdk/Makefile	2017-03-24 13:12:16.366306220 +0800
-+++ b/package/ssdk/qca-ssdk/Makefile	2017-03-24 13:02:11.254733089 +0800
+--- a/package/qca/qca-ssdk/Makefile	2017-03-24 13:12:16.366306220 +0800
++++ b/package/qca/qca-ssdk/Makefile	2017-03-24 13:02:11.254733089 +0800
 @@ -64,7 +64,7 @@ QCASSDK_CONFIG_OPTS+= TOOL_PATH=$(TOOLCH
  
  ifeq ($(LOCAL_VARIANT),hnat)
@@ -9,8 +9,8 @@
      QCASSDK_CONFIG_OPTS+= RFS_FEATURE=enable
  endif
  endif
---- a/package/ssdk/qca-ssdk/src/make/config.mk	2017-03-23 23:32:15.000000000 +0800
-+++ b/package/ssdk/qca-ssdk/src/make/config.mk	2017-03-24 13:21:08.603904543 +0800
+--- a/package/qca/qca-ssdk/src/make/config.mk	2017-03-23 23:32:15.000000000 +0800
++++ b/package/qca/qca-ssdk/src/make/config.mk	2017-03-24 13:21:08.603904543 +0800
 @@ -11,7 +11,7 @@ endif
  
  #define cpu type such as PPC MIPS ARM X86
@@ -29,8 +29,8 @@
    endif
  
    ifndef SUPPORT_CHIP
---- a/package/ssdk/qca-ssdk/src/make/linux_opt.mk	2017-03-23 23:32:15.000000000 +0800
-+++ b/package/ssdk/qca-ssdk/src/make/linux_opt.mk	2017-03-24 12:41:53.237165048 +0800
+--- a/package/qca/qca-ssdk/src/make/linux_opt.mk	2017-03-23 23:32:15.000000000 +0800
++++ b/package/qca/qca-ssdk/src/make/linux_opt.mk	2017-03-24 12:41:53.237165048 +0800
 @@ -267,29 +267,22 @@ ifeq (KSLIB, $(MODULE_TYPE))
  	          -include $(SYS_PATH)/include/linux/kconfig.h
              else

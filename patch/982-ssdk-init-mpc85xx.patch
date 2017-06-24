@@ -1,5 +1,5 @@
---- a/package/ssdk/qca-ssdk/src/src/init/ssdk_init.c	2017-03-25 02:41:50.432879238 +0800
-+++ b/package/ssdk/qca-ssdk/src/src/init/ssdk_init.c	2017-03-25 02:36:17.754145144 +0800
+--- a/package/qca/qca-ssdk/src/src/init/ssdk_init.c	2017-03-25 02:41:50.432879238 +0800
++++ b/package/qca/qca-ssdk/src/src/init/ssdk_init.c	2017-03-25 02:36:17.754145144 +0800
 @@ -1081,10 +1081,10 @@ const struct switch_dev_ops qca_ar8327_s
  	.apply_config = qca_ar8327_sw_hw_apply,
  	.reset_switch = qca_ar8327_sw_reset_switch,
