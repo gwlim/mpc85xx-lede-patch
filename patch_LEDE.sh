@@ -5,12 +5,15 @@ wget https://source.codeaurora.org/quic/qsdk/oss/system/openwrt/plain/include/lo
 sed -i 's|git describe --dirty|git describe|g' ./include/local-development.mk
 sed -i 's|$(TOPDIR)/qca/src/$(PKG_NAME)|$(TOPDIR)/package/ssdk/$(PKG_NAME)/src|g' ./include/local-development.mk
 echo 'src-git ssdk https://source.codeaurora.org/quic/qsdk/oss/system/feeds/ssdk.git' >> ./feeds.conf.default
+echo 'src-git shortcutfe https://source.codeaurora.org/quic/qsdk/oss/system/feeds/shortcut-fe.git;release/endive' >> ./feeds.conf.default
 ./scripts/feeds update -a
 echo Clone QCA SRC
 git clone https://source.codeaurora.org/quic/qsdk/oss/lklm/qca-ssdk.git ./feeds/ssdk/qca-ssdk/src -b release/endive
 git clone https://source.codeaurora.org/quic/qsdk/oss/ssdk-shell.git ./feeds/ssdk/qca-ssdk-shell/src -b release/endive
 # git clone https://source.codeaurora.org/quic/qsdk/oss/lklm/qca-rfs ./feeds/nsshost/qca-rfs/src
-mv ./feeds/ssdk ./package/
+mkdir -p ./package/qca/
+mv ./feeds/ssdk/* ./package/qca
+mv ./feeds/shortcutfe/* ./package/qca
 sed -i '$d' feeds.conf.default
 #mkdir -p ./package/nsshost/qca-rfs/
 #mv ./feeds/nsshost/qca-rfs/ ./package/nsshost
