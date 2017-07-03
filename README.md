@@ -19,7 +19,7 @@ How to use
 
 Clone this Repository and copy into the LEDE repository
 
-    git clone https://github.com/gwlim/mpc85xx-lede-patch.git temp --depth 1; mv temp/* lede/; rm -rf temp
+    git clone -b lede-17.01 https://github.com/gwlim/mpc85xx-lede-patch.git temp --depth 1; mv temp/* lede/; rm -rf temp
 
 Change directory into the LEDE Repository
 
