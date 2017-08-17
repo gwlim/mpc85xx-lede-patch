@@ -1,0 +1,1997 @@
+--- /dev/null	2017-08-16 23:32:24.400359675 +0800
++++ b/src/string/powerpc/memcmp.S	2017-08-17 20:47:56.501771335 +0800
+@@ -0,0 +1,547 @@
++/*------------------------------------------------------------------
++ * memcmp.S
++ *
++ * Standard memcmp function optimized for e500 using SPE.
++ *
++ *      Copyright (c) 2005 Freescale Semiconductor, Inc
++ *      ALL RIGHTS RESERVED
++ *
++ *	Redistribution and use in source and binary forms, with or
++ *	without modification, are permitted provided that the following
++ *	conditions are met:
++ *	
++ *	
++ *	Redistributions of source code must retain the above copyright
++ *	notice, this list of conditions and the following disclaimer.
++ *	
++ *	Redistributions in binary form must reproduce the above copyright
++ *	notice, this list of conditions and the following disclaimer in
++ *	the documentation and/or other materials provided with the
++ *	distribution.
++ *	
++ *	Neither the name of Freescale Semiconductor, Inc nor the names of
++ *	its contributors may be used to endorse or promote products derived
++ *	from this software without specific prior written permission.
++ *	
++ *	
++ *	
++ *	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
++ *	CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
++ *	INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ *	MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++ *	DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ *	BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++ *	EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
++ *	TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ *	DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++ *	ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++ *	OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ *	OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ *	POSSIBILITY OF SUCH DAMAGE.
++ *
++ *------------------------------------------------------------------
++ */
++#include <ppc-asm.h>
++/*------------------------------------------------------------------
++ * int memcmp(unsigned char *s1, unsigned char *s2, unsigned int len)
++ *
++ * Returns:
++ *  0 if equal
++ *  <0 if less
++ *  >0 if greater
++ *------------------------------------------------------------------
++ */
++
++	.file	"memcmp.S"
++	.section	".text"
++	.align 4
++
++#define FUNCTION memcmp
++
++	.globl FUNCTION
++	.type FUNCTION,@function
++FUNCTION:
++        or r0,r3,r4
++        andi. r0,r0,7
++        xor r0,r3,r4
++        cmpli cr1,r5,32
++        mtcrf 0x1,r5
++        bne memcmp_unaligned
++
++aligned_copy:
++        mtcrf 0x2,r5
++        bge cr1,big_aligned
++
++/* We check the last 0-31 bytes in powers of 2, starting
++ * with 16 bytes (two doubles), and moving on down until
++ * all the bytes have been compared, or a difference has
++ * been found.
++ */
++try_two_doubles:
++        bf 27,try_one_double
++        evldd r6,0(r3)
++        evldd r10,0(r4)
++        evldd r7,8(r3)
++        addi r3,r3,16
++        evldd r11,8(r4)
++        addi r4,r4,16
++        evcmpeq 1,r6,r10
++        bf 7,found_diff1
++        evcmpeq 5,r7,r11
++        bf 23,found_diff2
++
++try_one_double:
++        bf 28,try_word
++        evldd r6,0(r3)
++        addi r3,r3,8
++        evldd r10,0(r4)
++        addi r4,r4,8
++        evcmpeq 1,r6,r10
++        bf 7,found_diff1
++
++try_word:
++        cror 31,30,31
++        bf 29,do_last
++        lwz r6,0(r3)
++        addi r3,r3,4
++        lwz r10,0(r4)
++        addi r4,r4,4
++        subfc. r0,r6,r10
++        bne found_word_diff
++
++        /*  Here we mask off any bytes in the last word that we
++	 *  don't want to look at (they are outside the buffer),
++	 *  and then we compare the two words.
++	 */
++do_last:
++        bf 31,finish
++        li r8,-1
++        lwz r6,0(r3)
++        rlwinm r5,r5,3,27,28
++        lwz r10,0(r4)
++        srw r8,r8,r5
++        or r6,r6,r8
++        or r10,r10,r8
++        subfc. r0,r6,r10
++        bne found_word_diff
++
++/* We only come here if no differences were found. */
++finish:
++        li r3,0
++        blr
++
++/* If we found a difference while comparing words, take
++ * the overflow from the subfc., then OR 1 with it, to make
++ * sure we return 1 or -1 (and not zero)
++ */
++found_word_diff:
++        subfe r3,r3,r3 /* will be zero or -1 */
++        nand r3,r3,r3
++        ori r3,r3,1
++        blr
++
++big_aligned:
++        /* At this point, we know there are at LEAST 32 bytes of
++	 * data to compare, so have fun!
++	 */
++        evldd r6,0(r3)
++
++        /* The first loop processes 48 bytes */
++        addic. r5,r5,-48
++
++        evldd r10,0(r4)
++
++        evcmpeq 1,r6,r10
++
++        evldd r7,8(r3)
++
++        evldd r11,8(r4)
++
++        /* Skip the loop, since there aren't enough left for the
++	 * loop to run once.  The epilog will take care of 16
++	 * bytes worth.
++	 */
++        blt aligned_double_end
++
++/* This code is optimized to double issue every cycle, assuming
++ * good branch prediction.  It does 4 compares per iteration, so
++ * it processes 32 bytes in 10 cycles ==> 3.2 bytes/cycle.
++ */
++big_loop:
++        evldd r8, 16(r3)
++        bf 7,found_diff1
++        evcmpeq 5,r7,r11
++        evldd r12, 16(r4)
++        bf 23,found_diff2
++        evldd r9, 24(r3)
++        addic. r5,r5,-32
++        evldd r0, 24(r4)
++        addi r3,r3,32
++        addi r4,r4,32
++        evcmpeq 6,r8,r12
++        evldd r6,0(r3)
++        bf 27,found_diff3
++        evldd r10,0(r4)
++        evcmpeq 7,r9,r0
++        evldd r7,8(r3)
++        bf 31,found_diff4
++        evldd r11,8(r4)
++        evcmpeq 1,r6,r10
++        bge big_loop
++
++/* Finish off the epilog of the loop */
++aligned_double_end:
++        bf 7,found_diff1
++        evcmpeq 5,r7,r11
++        addi r3,r3,16
++        addi r4,r4,16
++        bf 23,found_diff2
++
++        /* Redo these, because they get changed in the loop */
++        mtcrf 0x2,r5
++        mtcrf 0x1,r5
++        b try_two_doubles
++
++        /* Since we're here, we know that wordA and wordB are
++	 * different, but we need to return the result of
++	 * comparing the FIRST different word. We only return a
++	 * positive number if the first word is greater, or if
++	 * the first word is equal and the second word is
++	 * greater.  Otherwise we return a negative number.  The
++	 * boolean equation for greater would be gh + eh*gl.
++	 * After we compare for greaterness, we have gh, eh, and gl
++	 * (as well as some others).
++	 */
++found_diff1:
++        evcmpgtu 5,r6,r10
++        li r9,1
++        crand 6,21,4
++        li r12,-1
++        cror 6,6,20
++        isel r3,r9,r12,6
++
++/* A new idea.  We only need to return a positive result if A is
++ * greater than B and a negative if A < B.  A subtraction would
++ * yield such a result.  The only thing we need to do is make
++ * sure that we return the result word of the first DIFFERENT
++ * words.  So we do an isel based on the equalNhi to select the
++ * result
++ *	evsubfw		r3, r10, r6
++ *	evmergehi	r4, r3, r3
++ *	isel		r3, r3, r4, 1
++ */
++        blr
++
++found_diff2:
++        evcmpgtu 1,r7,r11
++        li r9,1
++        crand 22,5,20
++        li r12,-1
++        cror 22,22,4
++        isel r3,r9,r12,22
++        blr
++
++found_diff3:
++        evcmpgtu 1,r8,r12
++        li r9,1
++        crand 26,5,24
++        li r12,-1
++        cror 26,26,4
++        isel r3,r9,r12,26
++        blr
++
++found_diff4:
++        evcmpgtu 1,r9,r0
++        li r9,1
++        crand 30,5,28
++        li r12,-1
++        cror 30,30,4
++        isel r3,r9,r12,30
++        blr
++
++found_unaligned1:
++        evcmpgtu 5,r6,r8
++        li r9,1
++        crand 6,21,4
++        li r12,-1
++        cror 6,6,20
++        isel r3,r9,r12,6
++        blr
++
++found_unaligned2:
++        evcmpgtu 1,r7,r9
++        li r9,1
++        crand 22,5,20
++        li r12,-1
++        cror 22,22,4
++        isel r3,r9,r12,22
++        blr
++
++align_dest_word:
++align_dest_double:
++        /* First make sure there are at least 8 bytes left to
++	 * compare.  Otherwise, realignment could go out of bounds
++	 */
++        cmpli cr0,r5,8
++        neg r0,r3
++        blt small_compare
++
++        andi. r7,r3,0x3
++        mtcrf 0x1,r0
++
++        bne more_alignment
++
++/* Don't need to check if buffer A needs another word to be aligned.
++ * We're here, therefore we must have only been off by a word.
++ * So we shorten the path a bit by taking 2 branches out from the
++ * more common path (ie things tend to be at least word-aligned)
++ */
++align_one_word:
++        lwz r10,0(r4)
++        addi r4,r4,4
++        lwz r6,0(r3)
++        addi r3,r3,4
++        subfc. r0,r6,r10
++        addi r5,r5,-4
++        bne found_word_diff
++        bne cr6,unaligned_double_compare
++        cmpli cr1,r5,32
++        mtcrf 0x1,r5
++        b aligned_copy
++
++more_alignment:
++        bf 31, try_align_word
++        lbz r10,0(r4)
++        addi r4,r4,1
++        lbz r6,0(r3)
++        addi r3,r3,1
++        subfc. r0,r6,r10
++        addi r5,r5,-1
++        bne found_word_diff
++
++try_align_word:
++        bf 30, try_align_double
++        lhz r10,0(r4)
++        addi r4,r4,2
++        lhz r6,0(r3)
++        addi r3,r3,2
++        subfc. r0,r6,r10
++        addi r5,r5,-2
++        bne found_word_diff
++
++try_align_double:
++        bt 29, align_one_word
++        cmpli cr1,r5,32
++        mtcrf 0x1,r5
++        beq cr6,aligned_copy
++
++/* For each double word copied, we load the double words with
++ * each half from buffer B (r4), which starts at 0x*4 or 0x*c.  Then we
++ * use evmergelohi to take the halves and rejoin them.  Notice
++ * that any double load will necessarily be 4 bytes ahead.
++ * Invariant: at the start of any block (except this first one)
++ * which loads a doubleword, r10 will hold the first half of the
++ * first doubleword
++ */
++unaligned_double_compare:
++        /* align buffer B to a doubleword boundary */
++        rlwinm r4,r4,0,0,28
++        cmpli cr0,r5,16
++
++        /* grab the first doubleword */
++        evldd r11,0(r4)
++
++	/* Set bits in the CR to indicate how many bytes will
++	 * remain after the big loop is done */
++        mtcrf 0x2,r5
++        mtcrf 0x1,r5
++        bge unaligned_big_loop
++
++        /* we need the old double to be in r10
++         * for try_unaligned_double
++	 */
++        evmr r10,r11
++
++/* There are less than 2 double words left, so we take care of
++ * them.
++ */
++try_unaligned_double:
++        bf 28, try_unaligned_word
++        evldd r11,8(r4)
++        addi r4,r4,8
++        evldd r6,0(r3)
++        addi r3,r3,8
++        evmergelohi r10,r10,r11
++        evcmpeq 1,r6,r10
++        bf 7,found_diff1
++        evmr r10,r11
++
++try_unaligned_word:
++        /* realign r4 to its original alignment, so
++         * do_unaligned_last has the pointer in the right place
++	 */
++        addi r4,r4,4
++        cror 31,30,31
++        bf 29, do_unaligned_last
++        lwz r6,0(r3)
++        subfc. r0,r6,r10
++        addi r4,r4,4
++        addi r3,r3,4
++        bne found_word_diff
++
++do_unaligned_last:
++        bf 31,unaligned_end
++        lwz r6,0(r3)
++        rlwinm r5,r5,3,27,28
++        lwz r10,0(r4)
++        li r8,-1
++        srw r8,r8,r5
++        or r6,r6,r8
++        or r10,r10,r8
++        subfc. r0,r6,r10
++        bne found_word_diff
++
++unaligned_end:
++        li r3,0
++        blr
++
++unaligned_big_loop:
++        /* At this point, we know there are at least 16 bytes of
++	 * data to compare, so start loading them.
++	 * Also, the loop updates at the end, so we need to
++	 * update here to keep up.
++	 */
++        evldd r10,8(r4)
++        addic. r5,r5,-24
++        evldd r6,0(r3)
++        addi r4,r4,8
++        addi r3,r3,8
++        blt unaligned_big_loop_end
++
++unaligned_big_loop_really:
++        evmergelohi r8,r11,r10
++        evldd r11,8(r4)
++        evcmpeq 1,r6,r8
++        evldd r7,0(r3)
++        addic. r5,r5,-16
++        bf 7,found_unaligned1
++        evmergelohi r9,r10,r11
++        evldd r10,16(r4)
++        evcmpeq 5,r7,r9
++        evldd r6,8(r3)
++        addi r4,r4,16
++        bf 23,found_unaligned2
++        addi r3,r3,16
++        bge unaligned_big_loop_really
++
++unaligned_big_loop_end:
++        evmergelohi r8,r11,r10
++        evcmpeq 1,r8,r6
++        mtcrf 0x1,r5
++        bf 7,found_unaligned1
++        b try_unaligned_double
++
++
++small_compare:
++        mtcrf 0x1,r5
++        bf 29,try_small_half
++        lbz r6,0(r3)
++        lbz r10,0(r4)
++        subfc. r0,r6,r10
++        bne found_word_diff
++        lbz r7,1(r3)
++        lbz r11,1(r4)
++        subfc. r0,r7,r11
++        bne found_word_diff
++        lbz r8,2(r3)
++        lbz r12,2(r4)
++        subfc. r0,r8,r12
++        bne found_word_diff
++        lbz r9,3(r3)
++        lbz r0,3(r4)
++        subfc. r0,r9,r0
++        bne found_word_diff
++        addi r3,r3,4
++        addi r4,r4,4
++
++try_small_half:
++        bf 30,try_small_byte
++        lbz r6,0(r3)
++        lbz r10,0(r4)
++        subfc. r0,r6,r10
++        bne found_word_diff
++        lbz r7,1(r3)
++        lbz r11,1(r4)
++        subfc. r0,r7,r11
++        bne found_word_diff
++        addi r3,r3,2
++        addi r4,r4,2
++
++try_small_byte:
++        bf 31, small_finish
++        lbz r6,0(r3)
++        lbz r10,0(r4)
++        subfc. r0,r6,r10
++        bne found_word_diff
++
++small_finish:
++        li r3,0
++        blr
++
++memcmp_unaligned:
++        /* If both pointers can be double-aligned, align r3,
++	 * setting eq6 to indicate "aligned double"
++	 */
++        rlwinm. r0,r0,0,29,31 /* clrlwi 29 */
++
++        /* Do this instead of crset because unlike crset, it
++	 * isn't serialized.  Using a nonvolatile register for
++	 * comparison because we know it hasn't been used.
++	 */
++        cmpw cr6,r31,r31 /* set eq6 */
++
++        /* Look at r3 to see if we're aligned already (but not
++	 * both aligned, which is why we're here)
++	 */
++        rlwinm r7,r3,0,29,31
++        beq align_dest_double
++
++        /* If both pointers can be word-aligned, align dest,
++	 * clearing eq6 to indicate unaligned.
++	 * Compare to find out if dest is already doublealigned
++	 */
++        rlwinm. r0,r0,0,30,31
++        cmpwi cr1,r7,0
++
++        /* Only skip to unaligned_double_compare if r3 is aligned,
++	 * and r0 indicates word-alignment
++	 */
++        crand 6,6,2
++
++        crxor 26,26,26 /* clear eq6 */
++        beq cr1,unaligned_double_compare
++        beq align_dest_word
++
++        /* Before we hop into bytewise comparing, make sure that
++	 * there are bytes to compare (don't want to loop 4 billion+
++	 * times!
++	 */
++        cmpwi r5,0
++        beq byte_done
++
++        /* Well, alignment is just icky, compare bytewise */
++        mtctr r5
++byte_compare:
++        lbz r6,0(r3)
++        addi r3,r3,1
++        lbz r10,0(r4)
++        addi r4,r4,1
++        subfc. r0,r6,r10
++        bne found_word_diff
++        bdnz byte_compare
++
++byte_done:
++        li r3,0
++        blr
++
++        .size FUNCTION, .-FUNCTION
+--- /dev/null	2017-08-16 23:32:24.400359675 +0800
++++ b/src/string/powerpc/memcpy.S	2017-08-17 20:48:44.587825908 +0800
+@@ -0,0 +1,424 @@
++/*------------------------------------------------------------------
++ * memcpy.S
++ *
++ * Standard memcpy function optimized for e500 using SPE.  This
++ * function does not handle overlap, as per spec.  This file is
++ * identical to the memmove.S file.  To get a memmove out of it,
++ * specify -D__MEMMOVE__ to the compiler
++ *
++ *------------------------------------------------------------------
++ *      Copyright (c) 2005 Freescale Semiconductor, Inc
++ *      ALL RIGHTS RESERVED
++ *
++ *	Redistribution and use in source and binary forms, with or
++ *	without modification, are permitted provided that the following
++ *	conditions are met:
++ *	
++ *	
++ *	Redistributions of source code must retain the above copyright
++ *	notice, this list of conditions and the following disclaimer.
++ *	
++ *	Redistributions in binary form must reproduce the above copyright
++ *	notice, this list of conditions and the following disclaimer in
++ *	the documentation and/or other materials provided with the
++ *	distribution.
++ *	
++ *	Neither the name of Freescale Semiconductor, Inc nor the names of
++ *	its contributors may be used to endorse or promote products derived
++ *	from this software without specific prior written permission.
++ *	
++ *	
++ *	
++ *	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
++ *	CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
++ *	INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ *	MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++ *	DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ *	BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++ *	EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
++ *	TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ *	DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++ *	ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++ *	OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ *	OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ *	POSSIBILITY OF SUCH DAMAGE.
++ *------------------------------------------------------------------
++ */
++#include <ppc-asm.h>
++/*------------------------------------------------------------------
++ * int memcpy(const unsigned char* dst,
++ *            const unsigned char* src,
++ *            long count);
++ * void * memmove(const unsigned char* dst,
++ *                const unsigned char* src,
++ *                long count);
++ * Returns:
++ *  dst
++ *------------------------------------------------------------------
++ */
++
++
++#ifdef __MEMMOVE__
++#endif /* __MEMMOVE__ */
++
++
++	/* Some condition bits */
++
++	/* condition field masks */
++
++#ifdef __MEMMOVE__
++	.file	"memmove.S"
++#else /* memcpy */
++	.file	"memcpy.S"
++#endif /* __MEMMOVE */
++	.section	".text"
++	.align 4
++#ifdef __LIBCFSL__
++	#ifdef __MEMMOVE__
++		#define FUNCTION memmove
++	#else /* memcpy */
++		#define FUNCTION memcpy
++	#endif /* __MEMMOVE__ */
++#else
++	#ifdef __MEMMOVE__
++		#define FUNCTION memmove
++	#else /* memcpy */
++		#define FUNCTION memcpy
++	#endif /* __MEMMOVE__ */
++#endif
++	.globl FUNCTION
++	.type FUNCTION,@function
++FUNCTION:
++
++/* Prologs are different for memcpy and memmove.  memmove needs
++ * to handle the case where the buffers overlap correctly.
++ * memcpy does not.  In order to make the implementation simple,
++ * memmove ONLY copies backwards if it needs to, and only for as 
++ * much as is necessary to remove the overlap.
++ */
++#ifdef __MEMMOVE__
++        or r0,r4,r3
++        subf r9,r4,r3
++        mr r6,r3
++        subf r11,r9,r5
++        andi. r0,r0,7
++        rlwinm r9,r9,0,0,0
++        xor r0,r4,r6
++        bne memcpy_unaligned
++
++        or. r11,r9,r11
++        bgt Handle_Overlap
++
++/* memcpy is simpler */
++#else /* memcpy */
++
++        or r0,r4,r3
++        mr r6,r3
++        andi. r0,r0,7
++        xor r0,r4,r6
++        bne memcpy_unaligned
++
++#endif /* __MEMMOVE__ */
++
++aligned_copy:
++        srwi. r12,r5,5
++        mtcrf 0x2,r5
++        mtcrf 0x1,r5
++        bne big_loop
++
++try_two_doubles:
++        bf 27,try_one_double
++        evldd r7,0(r4)
++        evstdd r7,0(r6)
++        evldd r8,8(r4)
++        addi r4,r4,16
++        evstdd r8,8(r6)
++        addi r6,r6,16
++
++try_one_double:
++        bf 28,try_word
++        evldd r7,0(r4)
++        addi r4,r4,8
++        evstdd r7,0(r6)
++        addi r6,r6,8
++
++try_word:
++        bf 29,try_half
++        lwz r7,0(r4)
++        addi r4,r4,4
++        stw r7,0(r6)
++        addi r6,r6,4
++
++try_half:
++        bf 30,try_byte
++        lhz r7,0(r4)
++        addi r4,r4,2
++        sth r7,0(r6)
++        addi r6,r6,2
++
++try_byte:
++        bf 31,finish
++        lbz r7,0(r4)
++        stb r7,0(r6)
++
++finish:
++        blr
++
++big_loop:
++        evldd r7,0(r4)
++        addic. r12,r12,-1
++        evldd r8,8(r4)
++        evldd r9,16(r4)
++        evldd r10,24(r4)
++        addi r4,r4,32
++        evstdd r7,0(r6)
++        evstdd r8,8(r6)
++        evstdd r9,16(r6)
++        evstdd r10,24(r6)
++        addi r6,r6,32
++        bne big_loop
++
++        b try_two_doubles
++
++align_dest_word:
++align_dest_double:
++        /* First make sure there are at least 8 bytes left to
++	 * copy.  Otherwise, realignment could go out of bounds
++	 */
++        cmpwi r5,8
++        neg r0,r6
++        blt small_copy
++
++        andi. r7,r6,0x3
++        mtcrf 0x1,r0
++
++        bne more_alignment
++
++/* Don't need to check if r6 needs another word to be aligned.
++ * We're here, therefore we must have only been off by a word.
++ * So we shorten the path a bit by taking 2 branches out from the
++ * more common path (ie things tend to be at least word-aligned)
++ */
++align_one_word:
++        lwz r7,0(r4)
++        addi r4,r4,4
++        stw r7,0(r6)
++        addi r6,r6,4
++        addi r5,r5,-4
++        bne cr6,unaligned_double_copy
++        b aligned_copy
++
++more_alignment:
++        bf 31, try_align_word
++        lbz r7,0(r4)
++        addi r4,r4,1
++        stb r7,0(r6)
++        addi r6,r6,1
++        addi r5,r5,-1
++
++try_align_word:
++        bf 30, try_align_double
++        lhz r7,0(r4)
++        addi r4,r4,2
++        sth r7,0(r6)
++        addi r6,r6,2
++        addi r5,r5,-2
++
++try_align_double:
++        bt 29, align_one_word
++        beq cr6,aligned_copy
++
++/* For each double word copied, we load the double words with
++ * each half from r4 (which starts at 0x*4 or 0x*c).  Then we
++ * use evmergelohi to take the halves and rejoin them.  Notice
++ * that any double load will necessarily be 4 bytes ahead.
++ * Invariant: at the start of any block (except the first) which
++ * loads a doubleword, r10 will hold the first half of the
++ * first doubleword
++ */
++unaligned_double_copy:
++        /* align r4 to a doubleword boundary */
++        rlwinm r4,r4,0,0,28
++        srwi. r12, r5,5
++
++        /* grab the first doubleword */
++        evldd r10,0(r4)
++
++	/* Set the CR to indicate how many bytes remain to be
++	 * copied after the big loop is done */
++        mtcrf 0x2,r5
++        mtcrf 0x1,r5
++        bne unaligned_big_loop
++
++/* There are less than 4 double words left, so we take care of
++ * them
++ */
++try_unaligned_2_doubles:
++        bf 27, try_unaligned_double
++        evldd r9,8(r4)
++        evmergelohi r10,r10,r9
++        evstdd r10,0(r6)
++        evldd r10,16(r4)
++        addi r4,r4,16
++        evmergelohi r9,r9,r10
++        evstdd r9,8(r6)
++        addi r6,r6,16
++
++try_unaligned_double:
++        bf 28, try_unaligned_word
++        evldd r9,8(r4)
++        addi r4,r4,8
++        evmergelohi r10,r10,r9
++        evstdd r10,0(r6)
++        addi r6,r6,8
++        evmr r10,r9
++
++try_unaligned_word:
++        addi r4,r4,4
++        bf 29, try_unaligned_half
++        stw r10,0(r6)
++        addi r4,r4,4
++        addi r6,r6,4
++
++try_unaligned_half:
++        bf 30, try_unaligned_byte
++        lhz r10,0(r4)
++        addi r4,r4,2
++        sth r10,0(r6)
++        addi r6,r6,2
++
++try_unaligned_byte:
++        bf 31, finish
++        lbz r10,0(r4)
++        stb r10,0(r6)
++        blr
++
++unaligned_big_loop:
++        evldd r7,8(r4)
++        evldd r8,16(r4)
++        addic. r12,r12,-1
++        evldd r9,24(r4)
++        addi r4,r4,32
++        evmergelohi r10,r10,r7
++        evstdd r10,0(r6)
++        evmergelohi r7,r7,r8
++        evldd r10,0(r4)
++        evmergelohi r8,r8,r9
++        evstdd r7,8(r6)
++        evmergelohi r9,r9,r10
++        evstdd r8,16(r6)
++        evstdd r9,24(r6)
++        addi r6,r6,32
++        bne unaligned_big_loop
++        b try_unaligned_2_doubles
++
++
++small_copy:
++        mtcrf 0x1,r5
++        bf 29,try_small_half
++        lbz r7,0(r4)
++        lbz r8,1(r4)
++        lbz r9,2(r4)
++        lbz r10,3(r4)
++        addi r4,r4,4
++        stb r7,0(r6)
++        stb r8,1(r6)
++        stb r9,2(r6)
++        stb r10,3(r6)
++        addi r6,r6,4
++
++try_small_half:
++        bf 30,try_small_byte
++        lbz r7,0(r4)
++        lbz r8,1(r4)
++        addi r4,r4,2
++        stb r7,0(r6)
++        stb r8,1(r6)
++        addi r6,r6,2
++
++try_small_byte:
++        bf 31, finish
++        lbz r7,0(r4)
++        stb r7,0(r6)
++        blr
++
++memcpy_unaligned:
++#ifdef __MEMMOVE__
++
++        or. r11,r9,r11
++        bgt Handle_Overlap
++
++choose_alignment:
++#endif /* __MEMMOVE */
++        /* If both pointers can be double-aligned, align r6,
++	 * setting eq6 to indicate "aligned
++	 */
++        rlwinm. r0,r0,0,29,31
++        cmpw cr6,r31,r31 /* set eq6 */
++
++        /* Look at r6 to see if we're aligned already (but not
++	 * both aligned, which is why we're here)
++	 */
++        rlwinm r7,r6,0,29,31
++        beq align_dest_double
++
++        /* Compare to find out if r6 is already doublealigned
++	 * If both pointers can be word-aligned, align r6,
++	 * clearing eq6 to indicate unaligned
++	 */
++        rlwinm. r0,r0,0,30,31
++        cmpwi cr1,r7,0
++
++        /* Only skip to unaligned_double_copy if r6 is aligned,
++	 * AND r0 indicates word-alignment
++	 */
++        crand 6,6,2
++
++        crxor 26,26,26 /* clear eq6 */
++        beq cr1,unaligned_double_copy
++        beq align_dest_word
++
++        /* Before we hop into bytewise copying, make sure that
++	 * there are bytes to copy (don't want to loop 4 billion+
++	 * times!
++	 */
++        cmpwi r5,0
++        beqlr
++
++        /* Well, alignment is just icky, copy bytewise */
++        mtctr r5
++byte_copy:
++        lbz r7,0(r4)
++        addi r4,r4,1
++        stb r7,0(r6)
++        addi r6,r6,1
++        bdnz byte_copy
++        blr
++
++#ifdef __MEMMOVE__
++
++
++        /* If the regions being copied overlap, and r4 is lower
++	 * in memory than r6, then we need to copy backward
++	 * until the overlap is gone, then just do the normal
++	 * copy
++	 */
++Handle_Overlap:
++        /* r11 has the size of the overlap */
++        add r8,r6,r5
++        add r10,r4,r5
++
++        mtctr r11
++
++bkw_fix_loop:
++        lbzu r9,-1(r10)
++        stbu r9,-1(r8)
++        bdnz bkw_fix_loop
++
++        /* We're done, correct r5, and return */
++        subf r5,r11,r5
++
++        b FUNCTION
++#endif /* __MEMMOVE */
++
++        .size FUNCTION, .-FUNCTION
+--- /dev/null	2017-08-16 23:32:24.400359675 +0800
++++ b/src/string/powerpc/memmove.S	2017-08-17 20:52:16.374066260 +0800
+@@ -0,0 +1,392 @@
++/*------------------------------------------------------------------
++ * memmove.S
++ *
++ * Standard memcpy function optimized for e500 using SPE.  This
++ * function does not handle overlap, as per spec.  This file is
++ * identical to the memmove.S file.  To get a memmove out of it,
++ * specify -D__MEMMOVE__ to the compiler
++ *
++ *------------------------------------------------------------------
++ *      Copyright (c) 2005 Freescale Semiconductor, Inc
++ *      ALL RIGHTS RESERVED
++ *
++ *	Redistribution and use in source and binary forms, with or
++ *	without modification, are permitted provided that the following
++ *	conditions are met:
++ *	
++ *	
++ *	Redistributions of source code must retain the above copyright
++ *	notice, this list of conditions and the following disclaimer.
++ *	
++ *	Redistributions in binary form must reproduce the above copyright
++ *	notice, this list of conditions and the following disclaimer in
++ *	the documentation and/or other materials provided with the
++ *	distribution.
++ *	
++ *	Neither the name of Freescale Semiconductor, Inc nor the names of
++ *	its contributors may be used to endorse or promote products derived
++ *	from this software without specific prior written permission.
++ *	
++ *	
++ *	
++ *	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
++ *	CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
++ *	INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ *	MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++ *	DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ *	BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++ *	EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
++ *	TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ *	DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++ *	ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++ *	OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ *	OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ *	POSSIBILITY OF SUCH DAMAGE.
++ *------------------------------------------------------------------
++ */
++#include <ppc-asm.h>
++/*------------------------------------------------------------------
++ * int memcpy(const unsigned char* dst,
++ *            const unsigned char* src,
++ *            long count);
++ * void * memmove(const unsigned char* dst,
++ *                const unsigned char* src,
++ *                long count);
++ * Returns:
++ *  dst
++ *------------------------------------------------------------------
++ */
++
++
++
++
++	/* Some condition bits */
++
++	/* condition field masks */
++
++
++	.file	"memmove.S"
++	.section	".text"
++	.align 4
++#define FUNCTION memmove
++	.globl FUNCTION
++	.type FUNCTION,@function
++FUNCTION:
++
++/* Prologs are different for memcpy and memmove.  memmove needs
++ * to handle the case where the buffers overlap correctly.
++ * memcpy does not.  In order to make the implementation simple,
++ * memmove ONLY copies backwards if it needs to, and only for as 
++ * much as is necessary to remove the overlap.
++ */
++        or r0,r4,r3
++        subf r9,r4,r3
++        mr r6,r3
++        subf r11,r9,r5
++        andi. r0,r0,7
++        rlwinm r9,r9,0,0,0
++        xor r0,r4,r6
++        bne memcpy_unaligned
++
++        or. r11,r9,r11
++        bgt Handle_Overlap
++
++/* memcpy is simpler */
++
++aligned_copy:
++        srwi. r12,r5,5
++        mtcrf 0x2,r5
++        mtcrf 0x1,r5
++        bne big_loop
++
++try_two_doubles:
++        bf 27,try_one_double
++        evldd r7,0(r4)
++        evstdd r7,0(r6)
++        evldd r8,8(r4)
++        addi r4,r4,16
++        evstdd r8,8(r6)
++        addi r6,r6,16
++
++try_one_double:
++        bf 28,try_word
++        evldd r7,0(r4)
++        addi r4,r4,8
++        evstdd r7,0(r6)
++        addi r6,r6,8
++
++try_word:
++        bf 29,try_half
++        lwz r7,0(r4)
++        addi r4,r4,4
++        stw r7,0(r6)
++        addi r6,r6,4
++
++try_half:
++        bf 30,try_byte
++        lhz r7,0(r4)
++        addi r4,r4,2
++        sth r7,0(r6)
++        addi r6,r6,2
++
++try_byte:
++        bf 31,finish
++        lbz r7,0(r4)
++        stb r7,0(r6)
++
++finish:
++        blr
++
++big_loop:
++        evldd r7,0(r4)
++        addic. r12,r12,-1
++        evldd r8,8(r4)
++        evldd r9,16(r4)
++        evldd r10,24(r4)
++        addi r4,r4,32
++        evstdd r7,0(r6)
++        evstdd r8,8(r6)
++        evstdd r9,16(r6)
++        evstdd r10,24(r6)
++        addi r6,r6,32
++        bne big_loop
++
++        b try_two_doubles
++
++align_dest_word:
++align_dest_double:
++        /* First make sure there are at least 8 bytes left to
++	 * copy.  Otherwise, realignment could go out of bounds
++	 */
++        cmpwi r5,8
++        neg r0,r6
++        blt small_copy
++
++        andi. r7,r6,0x3
++        mtcrf 0x1,r0
++
++        bne more_alignment
++
++/* Don't need to check if r6 needs another word to be aligned.
++ * We're here, therefore we must have only been off by a word.
++ * So we shorten the path a bit by taking 2 branches out from the
++ * more common path (ie things tend to be at least word-aligned)
++ */
++align_one_word:
++        lwz r7,0(r4)
++        addi r4,r4,4
++        stw r7,0(r6)
++        addi r6,r6,4
++        addi r5,r5,-4
++        bne cr6,unaligned_double_copy
++        b aligned_copy
++
++more_alignment:
++        bf 31, try_align_word
++        lbz r7,0(r4)
++        addi r4,r4,1
++        stb r7,0(r6)
++        addi r6,r6,1
++        addi r5,r5,-1
++
++try_align_word:
++        bf 30, try_align_double
++        lhz r7,0(r4)
++        addi r4,r4,2
++        sth r7,0(r6)
++        addi r6,r6,2
++        addi r5,r5,-2
++
++try_align_double:
++        bt 29, align_one_word
++        beq cr6,aligned_copy
++
++/* For each double word copied, we load the double words with
++ * each half from r4 (which starts at 0x*4 or 0x*c).  Then we
++ * use evmergelohi to take the halves and rejoin them.  Notice
++ * that any double load will necessarily be 4 bytes ahead.
++ * Invariant: at the start of any block (except the first) which
++ * loads a doubleword, r10 will hold the first half of the
++ * first doubleword
++ */
++unaligned_double_copy:
++        /* align r4 to a doubleword boundary */
++        rlwinm r4,r4,0,0,28
++        srwi. r12, r5,5
++
++        /* grab the first doubleword */
++        evldd r10,0(r4)
++
++	/* Set the CR to indicate how many bytes remain to be
++	 * copied after the big loop is done */
++        mtcrf 0x2,r5
++        mtcrf 0x1,r5
++        bne unaligned_big_loop
++
++/* There are less than 4 double words left, so we take care of
++ * them
++ */
++try_unaligned_2_doubles:
++        bf 27, try_unaligned_double
++        evldd r9,8(r4)
++        evmergelohi r10,r10,r9
++        evstdd r10,0(r6)
++        evldd r10,16(r4)
++        addi r4,r4,16
++        evmergelohi r9,r9,r10
++        evstdd r9,8(r6)
++        addi r6,r6,16
++
++try_unaligned_double:
++        bf 28, try_unaligned_word
++        evldd r9,8(r4)
++        addi r4,r4,8
++        evmergelohi r10,r10,r9
++        evstdd r10,0(r6)
++        addi r6,r6,8
++        evmr r10,r9
++
++try_unaligned_word:
++        addi r4,r4,4
++        bf 29, try_unaligned_half
++        stw r10,0(r6)
++        addi r4,r4,4
++        addi r6,r6,4
++
++try_unaligned_half:
++        bf 30, try_unaligned_byte
++        lhz r10,0(r4)
++        addi r4,r4,2
++        sth r10,0(r6)
++        addi r6,r6,2
++
++try_unaligned_byte:
++        bf 31, finish
++        lbz r10,0(r4)
++        stb r10,0(r6)
++        blr
++
++unaligned_big_loop:
++        evldd r7,8(r4)
++        evldd r8,16(r4)
++        addic. r12,r12,-1
++        evldd r9,24(r4)
++        addi r4,r4,32
++        evmergelohi r10,r10,r7
++        evstdd r10,0(r6)
++        evmergelohi r7,r7,r8
++        evldd r10,0(r4)
++        evmergelohi r8,r8,r9
++        evstdd r7,8(r6)
++        evmergelohi r9,r9,r10
++        evstdd r8,16(r6)
++        evstdd r9,24(r6)
++        addi r6,r6,32
++        bne unaligned_big_loop
++        b try_unaligned_2_doubles
++
++
++small_copy:
++        mtcrf 0x1,r5
++        bf 29,try_small_half
++        lbz r7,0(r4)
++        lbz r8,1(r4)
++        lbz r9,2(r4)
++        lbz r10,3(r4)
++        addi r4,r4,4
++        stb r7,0(r6)
++        stb r8,1(r6)
++        stb r9,2(r6)
++        stb r10,3(r6)
++        addi r6,r6,4
++
++try_small_half:
++        bf 30,try_small_byte
++        lbz r7,0(r4)
++        lbz r8,1(r4)
++        addi r4,r4,2
++        stb r7,0(r6)
++        stb r8,1(r6)
++        addi r6,r6,2
++
++try_small_byte:
++        bf 31, finish
++        lbz r7,0(r4)
++        stb r7,0(r6)
++        blr
++
++memcpy_unaligned:
++
++        or. r11,r9,r11
++        bgt Handle_Overlap
++
++choose_alignment:
++
++        /* If both pointers can be double-aligned, align r6,
++	 * setting eq6 to indicate "aligned
++	 */
++        rlwinm. r0,r0,0,29,31
++        cmpw cr6,r31,r31 /* set eq6 */
++
++        /* Look at r6 to see if we're aligned already (but not
++	 * both aligned, which is why we're here)
++	 */
++        rlwinm r7,r6,0,29,31
++        beq align_dest_double
++
++        /* Compare to find out if r6 is already doublealigned
++	 * If both pointers can be word-aligned, align r6,
++	 * clearing eq6 to indicate unaligned
++	 */
++        rlwinm. r0,r0,0,30,31
++        cmpwi cr1,r7,0
++
++        /* Only skip to unaligned_double_copy if r6 is aligned,
++	 * AND r0 indicates word-alignment
++	 */
++        crand 6,6,2
++
++        crxor 26,26,26 /* clear eq6 */
++        beq cr1,unaligned_double_copy
++        beq align_dest_word
++
++        /* Before we hop into bytewise copying, make sure that
++	 * there are bytes to copy (don't want to loop 4 billion+
++	 * times!
++	 */
++        cmpwi r5,0
++        beqlr
++
++        /* Well, alignment is just icky, copy bytewise */
++        mtctr r5
++byte_copy:
++        lbz r7,0(r4)
++        addi r4,r4,1
++        stb r7,0(r6)
++        addi r6,r6,1
++        bdnz byte_copy
++        blr
++
++        /* If the regions being copied overlap, and r4 is lower
++	 * in memory than r6, then we need to copy backward
++	 * until the overlap is gone, then just do the normal
++	 * copy
++	 */
++Handle_Overlap:
++        /* r11 has the size of the overlap */
++        add r8,r6,r5
++        add r10,r4,r5
++
++        mtctr r11
++
++bkw_fix_loop:
++        lbzu r9,-1(r10)
++        stbu r9,-1(r8)
++        bdnz bkw_fix_loop
++
++        /* We're done, correct r5, and return */
++        subf r5,r11,r5
++
++        b FUNCTION
++
++        .size FUNCTION, .-FUNCTION
+--- /dev/null	2017-08-16 23:32:24.400359675 +0800
++++ b/src/string/powerpc/memset.S	2017-08-17 20:52:40.723093891 +0800
+@@ -0,0 +1,420 @@
++/*------------------------------------------------------------------
++ * memset.S
++ *
++ * Standard memset function optimized for e500 using SPE
++ *
++ *      Copyright (c) 2005 Freescale Semiconductor, Inc
++ *      ALL RIGHTS RESERVED
++ *
++ *	Redistribution and use in source and binary forms, with or
++ *	without modification, are permitted provided that the following
++ *	conditions are met:
++ *	
++ *	
++ *	Redistributions of source code must retain the above copyright
++ *	notice, this list of conditions and the following disclaimer.
++ *	
++ *	Redistributions in binary form must reproduce the above copyright
++ *	notice, this list of conditions and the following disclaimer in
++ *	the documentation and/or other materials provided with the
++ *	distribution.
++ *	
++ *	Neither the name of Freescale Semiconductor, Inc nor the names of
++ *	its contributors may be used to endorse or promote products derived
++ *	from this software without specific prior written permission.
++ *	
++ *	
++ *	
++ *	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
++ *	CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
++ *	INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ *	MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++ *	DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
++ *	BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
++ *	EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
++ *	TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ *	DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++ *	ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++ *	OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ *	OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
++ *	POSSIBILITY OF SUCH DAMAGE.
++ *
++ *------------------------------------------------------------------
++ */
++#include <ppc-asm.h>
++/*------------------------------------------------------------------
++ * void * memset(void *origdest, int value, size_t len)
++ *
++ * returns dest
++ *
++ *------------------------------------------------------------------
++ */
++
++
++
++#define BZERO_FUNCTION bzero
++#define MEMSET_FUNCTION memset
++
++	.file	"memset.S"
++	.section	".text"
++	.align 4
++	.globl MEMSET_FUNCTION 
++	.type MEMSET_FUNCTION,@function
++MEMSET_FUNCTION:
++        /* Find out whether the destination buffer is already
++	 * aligned, and propagate the byte through the entire
++	 * word.
++	 */
++        andi. r0,r3,0x7
++        rlwimi r4,r4,8,16,23
++
++        /* Check if value (r4) is zero (most common case).  If it
++	 * is, we jump to bzero
++	 */
++        cmpwi cr1,r4,0
++
++        rlwimi r4,r4,16,0,15
++
++        /* If r4 is 0, then we will jump to bzero.  If so,
++	 * we want the count to be in the right place for bzero (r4)
++	 */
++        mr r11,r4
++        mr r4,r5
++
++        beq cr1, BZERO_FUNCTION
++
++        mr r6,r3
++        bne align_dest_double
++
++aligned_set:
++        /* Get the number of doubles/4, since we write 4 at a
++	 * time in the big loop.
++	 */
++        srwi. r12,r5,5
++
++        /* Set the condition register so that each bit represents
++	 * some number of bytes to set.
++	 */
++        mtcrf 0x2,r5
++        mtcrf 0x1,r5
++
++        /* Copy r11 up into the hi word, so we can set 8 bytes
++	 * at a time.
++	 */
++        evmergelo r11,r11,r11
++
++        /* If there aren't at least 32 bytes to set, take care of
++	 * the last 0-31
++	 */
++        bne big_loop
++
++/* We only store to memory that we are changing.  No extra loads
++ * or stores are done.
++ */
++try_two_doubles:
++        bf 27,try_one_double
++        evstdd r11,0(r6)
++        evstdd r11,8(r6)
++        addi r6,r6,16
++
++try_one_double:
++        bf 28,try_word
++        evstdd r11,0(r6)
++        addi r6,r6,8
++        nop
++
++try_word:
++        bf 29,try_half
++        stw r11,0(r6)
++        addi r6,r6,4
++        nop
++
++try_half:
++        bf 30,try_byte
++        sth r11,0(r6)
++        addi r6,r6,2
++        nop
++
++try_byte:
++        bf 31,finish
++        stb r11,0(r6)
++
++finish:
++        blr
++
++/* Write 32 bytes at a time */
++big_loop:
++        /* adjust r6 back by 8.  We need to do this so we can
++	 * hoist the pointer update above the last store in the
++	 * loop.  This means that a store can be done every cycle
++	 */
++        addi r6,r6,-8
++loop:
++        evstdd r11,8(r6)
++        addic. r12,r12,-1
++        evstdd r11,16(r6)
++        evstdd r11,24(r6)
++        addi r6,r6,32
++        evstdd r11,0(r6)
++        bne loop
++
++        /* Readjust r6 */
++        addi r6,r6,8
++        /* Jump back to take care of the last 0-31 bytes */
++        b try_two_doubles
++
++align_dest_double:
++        /* First make sure there are at least 8 bytes left to
++	 * set.  Otherwise, realignment could go out of bounds
++	 */
++        cmpwi cr1, r5,8
++
++        /* Find out how many bytes we need to set in order to
++	 * align r6
++	 */
++        neg r0,r6
++        andi. r7,r6,0x3
++
++        blt cr1, small_set
++
++        /* Set the condition register so that each bit in cr7
++	 * represents a number of bytes to write to align r6
++	 */
++        mtcrf 0x1,r0
++
++        /* The most common case is that r6 is at least
++	 * word-aligned, so that is the fall-through case.
++	 * Otherwise, we skip ahead to align a bit more.
++	 */
++        bne more_alignment
++align_one_word:
++        addi r5,r5,-4
++        stw r11,0(r6)
++        addi r6,r6,4
++        b aligned_set
++
++more_alignment:
++        bf 31, try_align_word
++        addi r5,r5,-1
++        stb r11,0(r6)
++        addi r6,r6,1
++
++try_align_word:
++        bf 30, try_align_double
++        addi r5,r5,-2
++        sth r11,0(r6)
++        addi r6,r6,2
++
++try_align_double:
++        bt 29, align_one_word
++        b aligned_set
++
++small_set:
++        mtcrf 0x1,r5
++        bf 29,try_small_half
++        /* This may be better, but stw SHOULD do the same thing
++	 * as fast or faster.  It just has a chance of being
++	 * unaligned
++	 *	stb	r11,0(r6)
++	 *	stb	r11,1(r6)
++	 *	stb	r11,2(r6)
++	 *	stb	r11,3(r6)
++	 */
++
++        stw r11,0(r6)
++        addi r6,r6,4
++
++try_small_half:
++        bf 30,try_small_byte
++
++        /* Storing half should take the same or less time than
++	 * two stb, so we do that
++	 */
++        sth r11,0(r6)
++        addi r6,r6,2
++
++try_small_byte:
++        bf 31, finish
++        stb r11,0(r6)
++        blr
++
++        .size MEMSET_FUNCTION, .-MEMSET_FUNCTION
++
++/* bzero(void *dest, unsigned int zcount)
++ * This is the most common use of memset, so we will optimize it.
++ * Writing zeros in PowerPC can be done 32 bytes at a time (one
++ * cacheline, that is), so all we need to do is align dest to a
++ * cacheline boundary, and then dcbz until there's less than a
++ * cacheline left.
++ * bzero doesn't return anything, but we will have it return the
++ * original dest.  That way, memset can redirect to it, and still
++ * get the right result
++ */
++        .align 4
++        .globl BZERO_FUNCTION
++        .type BZERO_FUNCTION,@function
++BZERO_FUNCTION:
++        /* Check dest's alignment (within a cache-line) */
++        neg r8,r3
++
++        /* r12, here, is the number of 128 byte chunks to
++	 * zero out.
++	 */
++        srwi r12,r4,7
++
++        /* Find out the number of bytes needed to copy to align
++	 * dest to a cacheline boundary
++	 */
++        andi. r8, r8,0x1f
++        cmpwi cr1,r12,0
++
++        /* bzero can be called from memset, so we want it to
++	 * return the same value memset would.  This doesn't hurt
++	 * anything, so we keep the old value of r3, and copy it
++	 * into another register which we are free to change.
++	 */
++        mr r6,r3
++
++        /* Jump to align r6 if it isn't already aligned */
++        bne align_dest_32
++
++        /* r6 is aligned to a cache-line, so we can zero
++	 * out using dcbz if the buffer is large enough
++	 */
++zero_aligned:
++        /* set the cr bits for the last 0-127 bytes remaining */
++        mtcrf 0x1,r4
++        mtcrf 0x2,r4
++
++        li r10,-32
++        li r9,32
++        beq cr1,try_two_lines
++
++        li r11,64
++
++zero_loop:
++        dcbz 0,r6
++        addic. r12,r12,-1
++        dcbz r9,r6
++        dcbz r11,r6
++        addi r6,r6,128
++        dcbz r10,r6
++        bne zero_loop
++
++try_two_lines:
++        /* Put 0 into r11 such that memset can handle the last
++	 * 0-31 bytes (yay, instruction savings!)
++	 */
++        evsplati r11,0
++
++        rlwinm. r0, r4,0,27,31
++
++        bf 25, try_one_line
++        dcbz 0,r6
++        dcbz r9,r6
++        addi r6,r6,64
++
++try_one_line:
++        bf 26, try_two_doubles
++        dcbz 0,r6
++        addi r6,r6,32
++
++        bne try_two_doubles
++        /* there weren't any bytes left, so we return */
++        blr
++
++align_dest_32:
++        /* move r8 into the crfields so that we can align
++	 * easily
++	 */
++        mtcrf 0x1,r8
++        mtcrf 0x2,r8
++
++        /* update the counter */
++        subf. r4,r8,r4
++
++        /* if r4 is not great enough to align r6, then we
++	 * zero in small amounts
++	 */
++        blt zero_small
++
++        /* zero out a register to store to memory */
++        evsplati r8,0
++
++        bf 31,zero_one_half
++        stb r8,0(r6)
++        addi r6,r6,1
++        nop
++
++zero_one_half:
++        bf 30, zero_word
++        sth r8,0(r6)
++        addi r6,r6,2
++        nop
++
++zero_word:
++        bf 29, zero_double
++        stw r8,0(r6)
++        addi r6,r6,4
++        nop
++
++zero_double:
++        bf 28, zero_two
++        evstdd r8,0(r6)
++        addi r6,r6,8
++        nop
++
++zero_two:
++        bf 27,zero_finish
++        evstdd r8,0(r6)
++        evstdd r8,8(r6)
++        addi r6,r6,16
++
++zero_finish:
++        srwi. r12,r4,7
++        li r9,32
++        li r11,64
++        li r10,-32
++
++        mtcrf 0x1,r4
++        mtcrf 0x2,r4
++        bne zero_loop
++        b try_two_lines
++
++zero_small:
++        add r4,r8,r4
++        mtcrf 0x1,r4
++        mtcrf 0x2,r4
++
++        evsplati r8,0
++
++        bf 27,zero_one_small
++        stw r8,0(r6)
++        stw r8,4(r6)
++        stw r8,8(r6)
++        stw r8,12(r6)
++        addi r6,r6,16
++
++zero_one_small:
++        bf 28,zero_word_small
++        stw r8,0(r6)
++        stw r8,4(r6)
++        addi r6,r6,8
++
++zero_word_small:
++        bf 29,zero_half_small
++        stw r8,0(r6)
++        addi r6,r6,4
++
++zero_half_small:
++        bf 30,zero_byte_small
++        sth r8,0(r6)
++        addi r6,r6,2
++
++zero_byte_small:
++        bf 31,finish
++        stb r8,0(r6)
++
++        blr
++
++        .size BZERO_FUNCTION, .-BZERO_FUNCTION
+
+--- /dev/null	2017-08-13 01:27:19.792712881 +0800
++++ b/include/ppc-asm.h	2017-08-14 21:45:34.000000000 +0800
+@@ -0,0 +1,186 @@
++/*
++ * Copyright (c) 1995, 2007 Freescale Semiconductor, Inc.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
++ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
++ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++ * DISCLAIMED. IN NO EVENT SHALL Freescale Semiconductor BE LIABLE FOR ANY
++ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
++ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
++ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
++ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++/* PowerPC asm definitions for GNU C.  */
++/* Under winnt, 1) gas supports the following as names and 2) in particular
++   defining "toc" breaks the FUNC_START macro as ".toc" becomes ".2" */
++
++#define r0	0
++#define sp	1
++#define toc	2
++#define r3	3
++#define r4	4
++#define r5	5
++#define r6	6
++#define r7	7
++#define r8	8
++#define r9	9
++#define r10	10
++#define r11	11
++#define r12	12
++#define r13	13
++#define r14	14
++#define r15	15
++#define r16	16
++#define r17	17
++#define r18	18
++#define r19     19
++#define r20	20
++#define r21	21
++#define r22	22
++#define r23	23
++#define r24	24
++#define r25	25
++#define r26	26
++#define r27	27
++#define r28	28
++#define r29	29
++#define r30	30
++#define r31	31
++
++#define cr0	0
++#define cr1	1
++#define cr2	2
++#define cr3	3
++#define cr4	4
++#define cr5	5
++#define cr6	6
++#define cr7	7
++
++#define f0	0
++#define f1	1
++#define f2	2
++#define f3	3
++#define f4	4
++#define f5	5
++#define f6	6
++#define f7	7
++#define f8	8
++#define f9	9
++#define f10	10
++#define f11	11
++#define f12	12
++#define f13	13
++#define f14	14
++#define f15	15
++#define f16	16
++#define f17	17
++#define f18	18
++#define f19     19
++#define f20	20
++#define f21	21
++#define f22	22
++#define f23	23
++#define f24	24
++#define f25	25
++#define f26	26
++#define f27	27
++#define f28	28
++#define f29	29
++#define f30	30
++#define f31	31
++
++/*
++ * Macros to glue together two tokens.
++ */
++
++#ifdef __STDC__
++#define XGLUE(a,b) a##b
++#else
++#define XGLUE(a,b) a/**/b
++#endif
++
++#define GLUE(a,b) XGLUE(a,b)
++
++/*
++ * Macros to begin and end a function written in assembler.  If -mcall-aixdesc
++ * or -mcall-nt, create a function descriptor with the given name, and create
++ * the real function with one or two leading periods respectively.
++ */
++
++#if defined (__powerpc64__)
++#define FUNC_NAME(name) GLUE(.,name)
++#define JUMP_TARGET(name) FUNC_NAME(name)
++#define FUNC_START(name) \
++	.section ".opd","aw"; \
++name: \
++	.quad GLUE(.,name); \
++	.quad .TOC.@tocbase; \
++	.quad 0; \
++	.previous; \
++	.type GLUE(.,name),@function; \
++	.globl name; \
++	.globl GLUE(.,name); \
++GLUE(.,name):
++
++#define FUNC_END(name) \
++GLUE(.L,name): \
++	.size GLUE(.,name),GLUE(.L,name)-GLUE(.,name)
++
++#elif defined(_CALL_AIXDESC)
++
++#ifdef _RELOCATABLE
++#define DESC_SECTION ".got2"
++#else
++#define DESC_SECTION ".got1"
++#endif
++
++#define FUNC_NAME(name) GLUE(.,name)
++#define JUMP_TARGET(name) FUNC_NAME(name)
++#define FUNC_START(name) \
++	.section DESC_SECTION,"aw"; \
++name: \
++	.long GLUE(.,name); \
++	.long _GLOBAL_OFFSET_TABLE_; \
++	.long 0; \
++	.previous; \
++	.type GLUE(.,name),@function; \
++	.globl name; \
++	.globl GLUE(.,name); \
++GLUE(.,name):
++
++#define FUNC_END(name) \
++GLUE(.L,name): \
++	.size GLUE(.,name),GLUE(.L,name)-GLUE(.,name)
++
++#else
++
++#define FUNC_NAME(name) GLUE(__USER_LABEL_PREFIX__,name)
++#if defined __PIC__ || defined __pic__
++#define JUMP_TARGET(name) FUNC_NAME(name@plt)
++#else
++#define JUMP_TARGET(name) FUNC_NAME(name)
++#endif
++#define FUNC_START(name) \
++	.type FUNC_NAME(name),@function; \
++	.globl FUNC_NAME(name); \
++FUNC_NAME(name):
++
++#define FUNC_END(name) \
++GLUE(.L,name): \
++	.size FUNC_NAME(name),GLUE(.L,name)-FUNC_NAME(name)
++#endif
++
++#if defined __linux__ && !defined __powerpc64__
++	.section .note.GNU-stack
++	.previous
++#endif
+
+--- a/src/string/bzero.c	2017-01-03 08:47:12.000000000 +0800
++++ /dev/null	2017-08-16 23:32:24.400359675 +0800
+@@ -1,8 +0,0 @@
+-#define _BSD_SOURCE
+-#include <string.h>
+-#include <strings.h>
+-
+-void bzero(void *s, size_t n)
+-{
+-	memset(s, 0, n);
+-}
