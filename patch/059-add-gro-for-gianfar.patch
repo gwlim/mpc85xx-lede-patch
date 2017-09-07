@@ -1,9 +1,9 @@
 diff --git a/./target/linux/mpc85xx/patches-4.4/059-add-gro-for-gianfar.patch b/./target/linux/mpc85xx/patches-4.4/059-add-gro-for-gianfar.patch
 new file mode 100644
-index 0000000..46baec0
+index 0000000..8722b7b
 --- /dev/null
 +++ b/./target/linux/mpc85xx/patches-4.4/059-add-gro-for-gianfar.patch
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,20 @@
 +--- a/drivers/net/ethernet/freescale/gianfar.c	2017-08-30 16:19:42.000000000 +0800
 ++++ b/drivers/net/ethernet/freescale/gianfar.c	2017-09-07 20:07:11.511895981 +0800
 +@@ -3174,7 +3174,7 @@ static int gfar_poll_rx_sq(struct napi_s
@@ -11,54 +11,16 @@ index 0000000..46baec0
 + 	if (work_done < budget) {
 + 		u32 imask;
 +-		napi_complete(napi);
-++		napi_complete_done(napi,rx_done);
+++		napi_complete_done(napi,work_done);
 + 		/* Clear the halt bit in RSTAT */
 + 		gfar_write(&regs->rstat, gfargrp->rstat);
 + 
-+@@ -3205,7 +3205,7 @@ static int gfar_poll_tx_sq(struct napi_s
-+ 	if (tx_queue->tx_skbuff[tx_queue->skb_dirtytx])
-+ 		gfar_clean_tx_ring(tx_queue);
-+ 
-+-	napi_complete(napi);
-++	napi_complete_done(napi,rx_done);
-+ 
-+ 	spin_lock_irq(&gfargrp->grplock);
-+ 	imask = gfar_read(&regs->imask);
 +@@ -3263,7 +3263,7 @@ static int gfar_poll_rx(struct napi_stru
 + 
 + 	if (!num_act_queues) {
 + 		u32 imask;
 +-		napi_complete(napi);
-++		napi_complete_done(napi,rx_done);
+++		napi_complete_done(napi,work_done);
 + 
 + 		/* Clear the halt bit in RSTAT */
 + 		gfar_write(&regs->rstat, gfargrp->rstat);
-+@@ -3304,7 +3304,7 @@ static int gfar_poll_tx(struct napi_stru
-+ 
-+ 	if (!has_tx_work) {
-+ 		u32 imask;
-+-		napi_complete(napi);
-++		napi_complete_done(napi,rx_done);
-+ 
-+ 		spin_lock_irq(&gfargrp->grplock);
-+ 		imask = gfar_read(&regs->imask);
-+--- a/drivers/net/ethernet/freescale/ucc_geth.c	2017-08-30 16:19:42.000000000 +0800
-++++ b/drivers/net/ethernet/freescale/ucc_geth.c	2017-09-07 20:08:51.768045877 +0800
-+@@ -3208,7 +3208,7 @@ static int ucc_geth_rx(struct ucc_geth_p
-+ 
-+ 			dev->stats.rx_bytes += length;
-+ 			/* Send the packet up the stack */
-+-			netif_receive_skb(skb);
-++			napi_gro_receive(&ag->napi,skb);
-+ 		}
-+ 
-+ 		skb = get_new_skb(ugeth, bd);
-+@@ -3303,7 +3303,7 @@ static int ucc_geth_poll(struct napi_str
-+ 		howmany += ucc_geth_rx(ugeth, i, budget - howmany);
-+ 
-+ 	if (howmany < budget) {
-+-		napi_complete(napi);
-++		napi_complete_done(napi,rx_done);
-+ 		setbits32(ugeth->uccf->p_uccm, UCCE_RX_EVENTS | UCCE_TX_EVENTS);
-+ 	}
-+ 
