@@ -1,9 +1,9 @@
 diff --git a/./target/linux/mpc85xx/patches-4.4/059-add-gro-for-gianfar.patch b/./target/linux/mpc85xx/patches-4.4/059-add-gro-for-gianfar.patch
 new file mode 100644
-index 0000000..8722b7b
+index 0000000..f5085df
 --- /dev/null
 +++ b/./target/linux/mpc85xx/patches-4.4/059-add-gro-for-gianfar.patch
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,32 @@
 +--- a/drivers/net/ethernet/freescale/gianfar.c	2017-08-30 16:19:42.000000000 +0800
 ++++ b/drivers/net/ethernet/freescale/gianfar.c	2017-09-07 20:07:11.511895981 +0800
 +@@ -3174,7 +3174,7 @@ static int gfar_poll_rx_sq(struct napi_s
@@ -24,3 +24,15 @@ index 0000000..8722b7b
 + 
 + 		/* Clear the halt bit in RSTAT */
 + 		gfar_write(&regs->rstat, gfargrp->rstat);
++
++--- a/drivers/net/ethernet/freescale/ucc_geth.c	2017-09-07 14:34:25.000000000 +0800
+++++ b/drivers/net/ethernet/freescale/ucc_geth.c	2017-09-13 21:42:41.176936305 +0800
++@@ -3303,7 +3303,7 @@ static int ucc_geth_poll(struct napi_str
++ 		howmany += ucc_geth_rx(ugeth, i, budget - howmany);
++ 
++ 	if (howmany < budget) {
++-		napi_complete(napi);
+++		napi_complete_done(napi,howmany);
++ 		setbits32(ugeth->uccf->p_uccm, UCCE_RX_EVENTS | UCCE_TX_EVENTS);
++ 	}
++ 
