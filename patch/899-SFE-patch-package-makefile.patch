@@ -23,7 +23,7 @@
  		ARCH="$(LINUX_KARCH)" \
  		SUBDIRS="$(PKG_BUILD_DIR)/fast-classifier" \
 -		EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
-+		EXTRA_CFLAGS="$(EXTRA_CFLAGS) -Wno-implicit-function-declaration" \
++		CFLAGS="$(TARGET_CFLAGS)" LDFLAGS="$(TARGET_LDFLAGS)" EXTRA_CFLAGS="$(EXTRA_CFLAGS) -Wno-implicit-function-declaration" \
  		modules
  endef
  
@@ -49,3 +49,12 @@
    TITLE:=Kernel driver for SFE
    FILES:=$(PKG_BUILD_DIR)/shortcut-fe/shortcut-fe-cm.ko
    KCONFIG:=CONFIG_NF_CONNTRACK_CHAIN_EVENTS=y
+@@ -74,7 +74,7 @@ define Build/Compile
+ 		CROSS_COMPILE="$(TARGET_CROSS)" \
+ 		ARCH="$(LINUX_KARCH)" \
+ 		SUBDIRS="$(PKG_BUILD_DIR)/shortcut-fe" \
+-		EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
++		CFLAGS="$(TARGET_CFLAGS)" LDFLAGS="$(TARGET_LDFLAGS)" EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
+ 		SFE_SUPPORT_IPV6=1 \
+ 		modules
+ endef
